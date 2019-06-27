@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+    <body>
+        <div id="app-title" style="display:flex; align-items: center;">
+            <img onclick="clearUsers()" src="kingRabbit.png"/>
+            <h1>Welcome to king rabbit power4 !</h1>
+        </div>
+        <div style="margin: 5px;" id="name-box">
+            <label for="name-input">What's your name ?</label>
+            <input id="name-input" type="text"/>
+            <button onclick="userConnection()">OK</button>
+        </div>
+        <h4 id="player-info" hidden></h4>
+        <h2 id="game-over" hidden></h2>    
+        <canvas id="canvas" width="500" height="500" hidden></canvas>    
+    </body>
+</html>
+
+        
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    var socket = io.connect('http://localhost:9090');  
+
+    const power4Size = 8;
+    const lineSize = 500 / 8;
+
+    // get canvas object
+    var canvas = document.getElementById('canvas');
+
+    // init matrice
+    var gridValues = [];
+    var playerOne = undefined;
+    var playerTwo = undefined;
+
+    var isPlayerOneTurn = true;
+    var isPlayerOne = undefined;
+
+    var matrice = [];
+    for(var ind=0; ind<power4Size; ind++) {
+        matrice[ind] = [];
+    }
+
+    var ctx = canvas.getContext('2d');
+
+    var launchGame = function() {
+        var grid = new Path2D();
+        var circles = [];
+
+        for(var i=1; i<power4Size; i++) {
+            for(var j=0; j<power4Size; j++) {
+                var circle = new Path2D();
+                circle.arc(30 + (j*60) , 30 + (i*60), 30, 0, 2 * Math.PI);
+                matrice[i][j] = {circle: circle, value: 0};
+            }
+        }
+
+        displayGrid();
+
+        var playablePiece = new Path2D();
+        canvas.addEventListener('mousemove', function(event) {
+            if(isPlayerOne === isPlayerOneTurn) {
+                var position = Math.trunc(event.clientX / 60);
+                var playablePiece = new Path2D();
+                if(position < 8) {
+                    playablePiece.arc(30 + (position*60) , 30, 30, 0, 2 * Math.PI);
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    if(isPlayerOne) {
+                        ctx.fillStyle='blue';
+                    } else {
+                        ctx.fillStyle='red';
+                    }
+                    ctx.fill(playablePiece);
+                    displayGrid();
+                    socket.emit('playable-piece-event', {x: 30 + (position*60), y: 30, radius: 30});
+                } else {
+                    playablePiece = new Path2D();
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    displayGrid();
+                }
+            }
+        });
+
+        canvas.addEventListener('click', function(event) {
+            if(isPlayerOne === isPlayerOneTurn) {
+                var positionX = Math.trunc(event.clientX / 60);
+                var newPosition = findNextPosition(positionX);
+                if(newPosition != undefined) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    var newPiece = new Path2D();
+                    var newCircleOriginX = 30 + (newPosition.x*60);
+                    var newCircleOriginY = 30 + (newPosition.y*60);
+                    newPiece.arc(newCircleOriginX , newCircleOriginY, 30, 0, 2 * Math.PI);
+                    var circleValue = isPlayerOne ? 1 : 2;
+                    matrice[newPosition.y][newPosition.x] = {circle: newPiece, value: circleValue};
+                    displayGrid();
+                    socket.emit('drop-piece-event', { 
+                        x: newCircleOriginX,
+                        y: newCircleOriginY,
+                        radius: 30,
+                        matriceX: newPosition.x,
+                        matriceY: newPosition.y
+                    });
+                    if(lookForPower4({x: newPosition.x, y: newPosition.y, value: circleValue})) {
+                        socket.emit('game_finished', {
+                            winner: isPlayerOne ? playerOne : playerTwo
+                        })
+                    }
+                }
+            }
+        });
+    };
+
+    var displayGrid = function() {
+        for(var i=1; i<power4Size; i++) {
+            for(var j=0; j<power4Size; j++) {
+                var matriceValue = matrice[i][j];
+                if(matriceValue.value === 0) {
+                    ctx.fillStyle = 'cyan';
+                } 
+                else if(matriceValue.value === 1) {
+                    ctx.fillStyle = 'blue';
+                }
+                else if(matriceValue.value === 2) {
+                    ctx.fillStyle = 'red';
+                }
+                ctx.fill(matriceValue.circle);
+            }
+        }
+    };
+
+    var findNextPosition = function(positionX) {
+        for(var y=power4Size -1; y>0; y--) {
+            if(matrice[y][positionX].value === 0) {
+                return {x: positionX, y: y};
+            }
+        }
+        return undefined;
+    };
+
+    var lookForPower4 = function (startCircle) {
+        var x = startCircle.x;
+        var y = startCircle.y;
+        var value = startCircle.value;
+        // horizontal left
+        if(startCircle.x > 2 && matrice[y][x].value === value && matrice[y][x-1].value === value
+        && matrice[y][x-2].value === value && matrice[y][x-3].value === value) {
+            return true;
+        }
+        // horizontal right
+        if(startCircle.x < power4Size - 3 && matrice[y][x].value === value && matrice[y][x+1].value === value
+        && matrice[y][x+2].value === value && matrice[y][x+3].value === value) {
+            return true;
+        }
+        // vertical top
+        if(startCircle.y > 2 && matrice[y][x].value === value && matrice[y-1][x].value === value
+        && matrice[y-2][x].value === value && matrice[y-3][x].value === value) {
+            return true;
+        }
+        // vertical bottom
+        if(startCircle.y < power4Size - 3 && matrice[y][x].value === value && matrice[y+1][x].value === value
+        && matrice[y+2][x].value === value && matrice[y+3][x].value === value) {
+            return true;
+        }
+        // diagonal bottom/right
+        if(startCircle.x < power4Size - 3 && startCircle.y < power4Size - 3 && matrice[y][x].value === value 
+        && matrice[y+1][x+1].value === value && matrice[y+2][x+2].value === value && matrice[y+3][x+3].value === value) {
+            return true;
+        }
+        // diagonal bottom/left
+        if(startCircle.x > 2 && startCircle.y < power4Size - 3 && matrice[y][x].value === value 
+        && matrice[y+1][x-1].value === value && matrice[y+2][x-2].value === value && matrice[y+3][x-3].value === value) {
+            return true;
+        }
+        // diagonal top/right
+        if(startCircle.y > 2 && startCircle.x < power4Size - 3 && matrice[y][x].value === value 
+        && matrice[y-1][x+1].value === value && matrice[y-2][x+2].value === value && matrice[y-3][x+3].value === value) {
+            return true;
+        }
+        // diagonal top/left
+        if(startCircle.y > 2 && startCircle.x > 2  && matrice[y][x].value === value 
+        && matrice[y-1][x+1].value === value && matrice[y-2][x+2].value === value && matrice[y-3][x+3].value === value) {
+            return true;
+        }
+        return false;
+    }
+
+    var clearUsers = function() {
+        socket.emit('clear-users', "Request to clear user");
+    };
+
+    var userConnection = function(message) {
+        console.log('TRY TO CONNECT');
+        var userName = document.getElementById('name-input').value;
+        socket.emit('new-user', userName);
+    };
+
+    var resetGame = function () {
+        //TODO implements live counter 5 4 3 2 1 go !
+        console.log('reseting the game');
+    };
+
+    socket.on('opponent-move', function(circleCoord) {
+        console.log('OPPONENT MOVE');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        var circle = new Path2D();
+        circle.arc(circleCoord.x, circleCoord.y, circleCoord.radius, 0, Math.PI * 2);
+        if(isPlayerOneTurn) {
+            ctx.fillStyle='blue';
+            if(circleCoord.matriceX != undefined) {
+                matrice[circleCoord.matriceY][circleCoord.matriceX] = {circle: circle, value: 1};
+                isPlayerOneTurn = false;
+                socket.emit('change-player-turn', 'Change player turn');
+            }
+        } else {
+            ctx.fillStyle='red';
+            if(circleCoord.matriceX != undefined) {
+                matrice[circleCoord.matriceY][circleCoord.matriceX] = {circle: circle, value: 2};
+                isPlayerOneTurn = true;
+                socket.emit('change-player-turn', 'Change player turn');
+            }
+        }
+        ctx.fill(circle);
+        displayGrid();
+    });
+
+    socket.on('change-turn', function(message) {
+        isPlayerOneTurn = !isPlayerOneTurn;
+    });
+
+    socket.on('game_over', function(winner) {
+        document.getElementById('player-info').style.display = "none";
+        var h2 = document.getElementById('game-over');
+        h2.innerHTML = isPlayerOne ? "WINNER is " + playerOne + ", in 5s game will reset" : "WINNER is " + playerTwo + ", in 5s game will reset";
+        h2.style.display = "block";
+        resetGame();
+    });
+
+
+    socket.on('start_game', function(users) {
+        console.log('START');
+        console.log(users);
+        canvas.style.display = "block";
+        document.getElementById('name-box').style.display = "none";
+        var h4 = document.getElementById("player-info");
+        h4.style.display = "block";
+        playerTwo = users[1];
+        playerOne = users[0];
+        if(isPlayerOne) {
+            h4.innerHTML = "You're playing versus " + users[1] + ", good luck !";
+            launchGame();
+        } else {
+            h4.innerHTML = "You're playing versus " + users[0] + ", good luck !";
+            isPlayerOne = false;
+            launchGame();
+        }
+    });
+
+    socket.on('waiting_player', function(event) {
+        var userName = document.getElementById('name-input').value;
+        isPlayerOne = true;
+        document.getElementById('name-box').style.display = "none";
+        var h4 = document.getElementById("player-info");
+        h4.innerHTML = "Welcome " + userName + "! Waiting for an opponent...";
+        h4.style.display = "block";
+    });
+
+    socket.on('game_going_on', function(event) {
+        console.log('GAME GOING ON');
+    });
+
+</script>
