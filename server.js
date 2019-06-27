@@ -2,7 +2,7 @@
 /* eslint-disable new-cap */
 const express = require('express');
 // const app = express();
-const port = 9090;
+const port = process.env.PORT || 9090;
 // const bodyParser = require('body-parser');
 const router = express.Router();
 // const tokyo = require('./routes/tokyo')(router);
