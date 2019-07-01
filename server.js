@@ -3,7 +3,7 @@
 const express = require('express');
 // const app = express();
 const port = process.env.PORT || 9090;
-console.log('Using PORT: ' + process.env.PORT);
+console.log('Using PORT: ' + port);
 // const bodyParser = require('body-parser');
 const router = express.Router();
 // const tokyo = require('./routes/tokyo')(router);
