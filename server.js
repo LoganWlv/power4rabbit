@@ -8,7 +8,7 @@ console.log('Using PORT: ' + port);
 const router = express.Router();
 // const tokyo = require('./routes/tokyo')(router);
 
-const http = require('https');
+const http = require('http');
 const fs = require('fs');
 const url = require('url');
 
